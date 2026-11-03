@@ -15,7 +15,7 @@ as a position holder, and the position must be read back and reconciled before t
 |---|---|
 | Deployed intelligent contract (studionet, chain 61999) | `0x0F9e290348e1500fA0800DDB89e5d770723038ef` |
 | Deploy transaction | `0xcfe195a7674c02f3120fa4a56774c889875b4ac6abfe57dcac0257b2af9fc913` |
-| Deployed commit | tag `studionet-v2` |
+| Deployed commit | `970d08c` (tag `studionet-v2`), the exact source whose sha256 matches the deployed bytecode |
 | Explorer | <https://genlayer-explorer.vercel.app/contracts/0x0F9e290348e1500fA0800DDB89e5d770723038ef> |
 | Live desk | <https://hoveiser.github.io/ProphetSyndicate/> |
 | Linked live ProphetGrid (real cross contract target) | `0x31C53838fF49168128D772625e34d3D2F7e11116` |

@@ -6,7 +6,7 @@
   "contract_address": "0x0F9e290348e1500fA0800DDB89e5d770723038ef",
   "deployer": "0x3de43AA2f7162c80af98abe78222aE0Cdf83c506",
   "deployed_at": "2026-11-03T17:14:07+00:00",
-  "generated_at": "2026-11-03T18:39:26+00:00",
+  "generated_at": "2026-11-03T19:06:32+00:00",
   "runner_pin": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6",
   "linked_prophet_grid_address": "0x31C53838fF49168128D772625e34d3D2F7e11116",
   "feeds": {
@@ -804,7 +804,8 @@
     "epoch_markets": {
       "2": "7",
       "4": "8",
-      "5": "9"
+      "5": "9",
+      "1": "6"
     },
     "positions_by_epoch": {
       "2": {
@@ -1061,30 +1062,107 @@
           "target_market_id": "9",
           "yes_shares_recorded": "3990000000000000000"
         }
+      },
+      "1": {
+        "epoch": 1,
+        "market_id": "6",
+        "routed_wei": "7182000000000000000",
+        "syndicate_view": {
+          "active_deployed_to_prophet_grid": "0",
+          "deployed_capital_wei": "7182000000000000000",
+          "deployment_status": "RECONCILED_LIVE",
+          "epoch_id": "1",
+          "has_position": true,
+          "no_shares_recorded": "3591000000000000000",
+          "prophet_grid_entry_snapshot": "{\"market_id\": \"6\", \"yes_shares\": 3591000000000000000, \"no_shares\": 3591000000000000000, \"principal\": 7182000000000000000, \"estimated_payout\": 0, \"refund_amount\": 7182000000000000000, \"implied_yes_bps\": 7500, \"phase\": \"PRE_CLOSE\", \"status\": \"OPEN\", \"band\": \"\", \"can_claim\": false}",
+          "realized_gain_wei": "0",
+          "realized_loss_wei": "0",
+          "reconciled": true,
+          "reconciled_proceeds_total": "20947500000000000000",
+          "reconciled_return_wei": "7182000000000000000",
+          "target_market_id": "6",
+          "yes_shares_recorded": "3591000000000000000"
+        },
+        "grid_trader_portfolio": {
+          "account": "0x0F9e290348e1500fA0800DDB89e5d770723038ef",
+          "balance_pgt": 0,
+          "refundable_wei": 0,
+          "last_rejection": "",
+          "positions": [
+            {
+              "market_id": "6",
+              "yes_shares": 3591000000000000000,
+              "no_shares": 3591000000000000000,
+              "principal": 7182000000000000000,
+              "estimated_payout": 0,
+              "refund_amount": 7182000000000000000,
+              "implied_yes_bps": 7500,
+              "phase": "OPEN_WINDOW",
+              "status": "OPEN",
+              "band": "",
+              "can_claim": false
+            },
+            {
+              "market_id": "7",
+              "yes_shares": 2394000000000000000,
+              "no_shares": 2394000000000000000,
+              "principal": 4788000000000000000,
+              "estimated_payout": 0,
+              "refund_amount": 4788000000000000000,
+              "implied_yes_bps": 7500,
+              "phase": "OPEN_WINDOW",
+              "status": "OPEN",
+              "band": "",
+              "can_claim": false
+            },
+            {
+              "market_id": "8",
+              "yes_shares": 498750000000000000,
+              "no_shares": 498750000000000000,
+              "principal": 997500000000000000,
+              "estimated_payout": 0,
+              "refund_amount": 997500000000000000,
+              "implied_yes_bps": 7500,
+              "phase": "OPEN_WINDOW",
+              "status": "OPEN",
+              "band": "",
+              "can_claim": false
+            },
+            {
+              "market_id": "9",
+              "yes_shares": 3990000000000000000,
+              "no_shares": 3990000000000000000,
+              "principal": 7980000000000000000,
+              "estimated_payout": 0,
+              "refund_amount": 7980000000000000000,
+              "implied_yes_bps": 7500,
+              "phase": "OPEN_WINDOW",
+              "status": "OPEN",
+              "band": "",
+              "can_claim": false
+            }
+          ],
+          "hedges": []
+        },
+        "reconciled_view": {
+          "active_deployed_to_prophet_grid": "0",
+          "deployed_capital_wei": "7182000000000000000",
+          "deployment_status": "RECONCILED_LIVE",
+          "epoch_id": "1",
+          "has_position": true,
+          "no_shares_recorded": "3591000000000000000",
+          "prophet_grid_entry_snapshot": "{\"market_id\": \"6\", \"yes_shares\": 3591000000000000000, \"no_shares\": 3591000000000000000, \"principal\": 7182000000000000000, \"estimated_payout\": 0, \"refund_amount\": 7182000000000000000, \"implied_yes_bps\": 7500, \"phase\": \"PRE_CLOSE\", \"status\": \"OPEN\", \"band\": \"\", \"can_claim\": false}",
+          "realized_gain_wei": "0",
+          "realized_loss_wei": "0",
+          "reconciled": true,
+          "reconciled_proceeds_total": "20947500000000000000",
+          "reconciled_return_wei": "7182000000000000000",
+          "target_market_id": "6",
+          "yes_shares_recorded": "3591000000000000000"
+        }
       }
     },
-    "market_making_epoch": {
-      "epoch": 5,
-      "status": "SETTLED",
-      "band": "HIGH_CONVICTION_DEPLOYMENT",
-      "deployed": 7980000000000000000,
-      "position": {
-        "active_deployed_to_prophet_grid": "0",
-        "deployed_capital_wei": "7980000000000000000",
-        "deployment_status": "RECONCILED_LIVE",
-        "epoch_id": "5",
-        "has_position": true,
-        "no_shares_recorded": "3990000000000000000",
-        "prophet_grid_entry_snapshot": "{\"market_id\": \"9\", \"yes_shares\": 3990000000000000000, \"no_shares\": 3990000000000000000, \"principal\": 7980000000000000000, \"estimated_payout\": 0, \"refund_amount\": 7980000000000000000, \"implied_yes_bps\": 7500, \"phase\": \"PRE_CLOSE\", \"status\": \"OPEN\", \"band\": \"\", \"can_claim\": false}",
-        "realized_gain_wei": "0",
-        "realized_loss_wei": "0",
-        "reconciled": true,
-        "reconciled_proceeds_total": "20947500000000000000",
-        "reconciled_return_wei": "7980000000000000000",
-        "target_market_id": "9",
-        "yes_shares_recorded": "3990000000000000000"
-      }
-    },
+    "market_making_epoch": null,
     "live_position_proof": {
       "epoch": 5,
       "market_id": "9",
@@ -1197,7 +1275,7 @@
       "locked_principal_reserved": true,
       "deployed_within_custody": true
     },
-    "clock_epoch": "1793731160",
+    "clock_epoch": "1793732785",
     "epochs": [
       {
         "epoch_id": "1",
@@ -1344,13 +1422,13 @@
   "sha256_identity": {
     "local_lf_sha256": "49007b0c067ef84b9c82a9eec5a7bc672be2e7ed03c4896082f287561b66b70e",
     "local_lf_bytes": 44342,
-    "git_blob_sha256": "f25eff7c7e17f7db280d330597f60016daeab3564094371e4039d65d70f3ed8d",
-    "github_raw_sha256": "f25eff7c7e17f7db280d330597f60016daeab3564094371e4039d65d70f3ed8d",
+    "git_blob_sha256": "49007b0c067ef84b9c82a9eec5a7bc672be2e7ed03c4896082f287561b66b70e",
+    "github_raw_sha256": "49007b0c067ef84b9c82a9eec5a7bc672be2e7ed03c4896082f287561b66b70e",
     "onchain_sha256": "49007b0c067ef84b9c82a9eec5a7bc672be2e7ed03c4896082f287561b66b70e",
     "onchain_bytes": 44342,
-    "match_local_git": false,
+    "match_local_git": true,
     "match_local_onchain": true,
-    "match_all_four": false
+    "match_all_four": true
   },
   "explorer": "https://genlayer-explorer.vercel.app/contracts/0x0F9e290348e1500fA0800DDB89e5d770723038ef",
   "verification_method": "every transaction was waited to a terminal status over the studionet RPC and its consensus data (status, result, leader execution result and validator votes) recorded; the explorer UI was not queryable at run time (HTTP 503 DEPLOYMENT_PAUSED), so no explorer claim is made"
