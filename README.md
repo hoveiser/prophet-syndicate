@@ -17,7 +17,7 @@ as a position holder, and the position must be read back and reconciled before t
 | Deploy transaction | `0xcfe195a7674c02f3120fa4a56774c889875b4ac6abfe57dcac0257b2af9fc913` |
 | Deployed commit | `970d08c` (tag `studionet-v2`), the exact source whose sha256 matches the deployed bytecode |
 | Explorer | <https://genlayer-explorer.vercel.app/contracts/0x0F9e290348e1500fA0800DDB89e5d770723038ef> |
-| Live desk | <https://hoveiser.github.io/ProphetSyndicate/> |
+| Live desk | <https://hoveiser.github.io/prophet-syndicate/> |
 | Linked live ProphetGrid (real cross contract target) | `0x31C53838fF49168128D772625e34d3D2F7e11116` |
 | Contract source | `contracts/prophet_syndicate.py`, 44,342 bytes, sha256 `49007b0c067ef84b9c82a9eec5a7bc672be2e7ed03c4896082f287561b66b70e`, pinned runner `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6` |
 | Tests | 84 direct mode tests, `genvm-lint check` clean |
