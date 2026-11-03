@@ -1427,8 +1427,11 @@
     "onchain_sha256": "49007b0c067ef84b9c82a9eec5a7bc672be2e7ed03c4896082f287561b66b70e",
     "onchain_bytes": 44342,
     "match_local_git": true,
+    "match_local_raw": true,
     "match_local_onchain": true,
-    "match_all_four": true
+    "match_all_four": true,
+    "raw_url": "https://raw.githubusercontent.com/hoveiser/prophet-syndicate/main/contracts/prophet_syndicate.py",
+    "explorer": "https://genlayer-explorer.vercel.app/contracts/0x0F9e290348e1500fA0800DDB89e5d770723038ef"
   },
   "explorer": "https://genlayer-explorer.vercel.app/contracts/0x0F9e290348e1500fA0800DDB89e5d770723038ef",
   "verification_method": "every transaction was waited to a terminal status over the studionet RPC and its consensus data (status, result, leader execution result and validator votes) recorded; the explorer UI was not queryable at run time (HTTP 503 DEPLOYMENT_PAUSED), so no explorer claim is made"
