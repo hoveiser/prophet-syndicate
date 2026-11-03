@@ -1,51 +1,63 @@
-nohup: ignoring input
-[13:01:58] deploying contracts/prophet_syndicate.py to studionet
-[13:02:42] deployed at 0x206bdF01A814e8ae27EbC4A7aC138995217B95F8
-[13:02:44] reusing deployment 0x206bdF01A814e8ae27EbC4A7aC138995217B95F8 (0 epochs)
-[13:02:50] funded alice
-[13:02:51] funded bob
-[13:02:52] epoch 1: senior and junior capital, consensus routing, then settlement
-[13:02:52] write epoch1:propose -> propose_routing_epoch_payable value=10000000000000000 as 0x3de43AA2 (attempt 1/1)
-[13:03:31] write epoch1:sub0 -> subscribe_senior_tranche_payable value=6000000000000000000 as 0x35F6cdAd (attempt 1/1)
-[13:04:16] write epoch1:sub1 -> subscribe_junior_tranche_payable value=3000000000000000000 as 0xF91865fe (attempt 1/1)
-[13:05:03] waiting 53s for epoch 1 subscription close
-[13:05:56] write epoch1:execute -> execute_consensus_rebalance value=0 as 0x3de43AA2 (attempt 1/3)
-[13:06:48] waiting 193s for epoch 1 challenge deadline
-[13:10:01] write epoch1:settle -> settle_tranche_epoch value=0 as 0x3de43AA2 (attempt 1/1)
-[13:10:41] epoch 2: soft fail payable refund, then a real epoch with a challenge
-[13:10:42] write softfail:bond -> propose_routing_epoch_payable value=2500000000000000 as 0xF91865fe (attempt 1/1)
-[13:11:27]   bob claimable after the rejected proposal: 2.995000 GEN
-[13:11:28] balance 0xF91865fe = 0.000000 GEN (before the refund withdrawal)
-[13:11:28] write refund:withdraw -> withdraw_refund value=0 as 0xF91865fe (attempt 1/1)
-[13:17:17] balance 0xF91865fe = 0.000000 GEN (after the refund withdrawal)
-[13:17:17] write epoch2:propose -> propose_routing_epoch_payable value=10000000000000000 as 0x3de43AA2 (attempt 1/1)
-[13:18:03] write epoch2:sub0 -> subscribe_senior_tranche_payable value=4000000000000000000 as 0x35F6cdAd (attempt 1/1)
-[13:18:48] write epoch2:sub1 -> subscribe_junior_tranche_payable value=2000000000000000000 as 0x6E52991a (attempt 1/1)
-[13:19:36] waiting 46s for epoch 2 subscription close
-[13:20:22] write epoch2:execute -> execute_consensus_rebalance value=0 as 0x3de43AA2 (attempt 1/3)
-[13:21:13] write epoch2:challenge -> challenge_routing_allocation_payable value=20000000000000000 as 0x6E52991a (attempt 1/1)
-[13:21:56] write epoch2:reaudit -> execute_consensus_rebalance value=0 as 0x35F6cdAd (attempt 1/3)
-[13:23:00] waiting 181s for epoch 2 challenge deadline
-[13:26:01] write epoch2:settle -> settle_tranche_epoch value=0 as 0x3de43AA2 (attempt 1/1)
-[13:26:41] epoch 3: un audited epoch, Rule 10 timeout principal refunds
-[13:26:41] write epoch3:propose -> propose_routing_epoch_payable value=10000000000000000 as 0x3de43AA2 (attempt 1/1)
-[13:27:24] write epoch3:sub0 -> subscribe_senior_tranche_payable value=2000000000000000000 as 0xF91865fe (attempt 1/1)
-[13:28:08] write epoch3:sub1 -> subscribe_junior_tranche_payable value=1000000000000000000 as 0x6E52991a (attempt 1/1)
-[13:28:54] waiting 1252s for epoch 3 audit timeout
-[13:49:46] write epoch3:refund:bob -> claim_epoch_principal_refund value=0 as 0xF91865fe (attempt 1/1)
-[13:50:29] write epoch3:refund:carol -> claim_epoch_principal_refund value=0 as 0x6E52991a (attempt 1/1)
-[13:51:15] epoch 4: elevated tail risk routing, settlement and the final claim sweep
-[13:51:15] write epoch4:propose -> propose_routing_epoch_payable value=10000000000000000 as 0x3de43AA2 (attempt 1/1)
-[13:52:00] write epoch4:sub0 -> subscribe_junior_tranche_payable value=3000000000000000000 as 0x35F6cdAd (attempt 1/1)
-[13:52:39] write epoch4:sub1 -> subscribe_senior_tranche_payable value=2000000000000000000 as 0xF91865fe (attempt 1/1)
-[13:53:25] waiting 55s for epoch 4 subscription close
-[13:54:20] write epoch4:execute -> execute_consensus_rebalance value=0 as 0x3de43AA2 (attempt 1/3)
-[13:55:12] waiting 193s for epoch 4 challenge deadline
-[13:58:25] write epoch4:settle -> settle_tranche_epoch value=0 as 0x3de43AA2 (attempt 1/1)
-[13:59:10] write sweep:alice -> claim_refundable_balance value=0 as 0x35F6cdAd (attempt 1/1)
-[13:59:54] write sweep:bob -> claim_refundable_balance value=0 as 0xF91865fe (attempt 1/1)
-[14:00:31] write sweep:carol -> claim_refundable_balance value=0 as 0x6E52991a (attempt 1/1)
-[14:01:17] collecting on chain evidence
-[14:01:18] git blob unavailable: Command '['git', '-C', '/home/hoveiser/Project/ProphetSyndicate', 'cat-file', 'blob', 'HEA
-[14:01:19] sha256 local=f25eff7c7e git=None raw=None onchain=f25eff7c7e
-[14:01:19] invariants ok=True, transactions=30
+[21:10:16] reusing deployment 0x0F9e290348e1500fA0800DDB89e5d770723038ef (1 epochs)
+[21:10:18] reusing deployment 0x0F9e290348e1500fA0800DDB89e5d770723038ef (1 epochs)
+[21:10:18] epoch 1: senior and junior capital, consensus routing, then settlement
+[21:10:18] skip epoch1:propose (0xd5589ca4931e078f)
+[21:10:20] skip epoch1:sub0 (0x3467c3b7ff1cdd09)
+[21:10:20] skip epoch1:sub1 (0x4968cb5802e89839)
+[21:10:22] waiting 3s for epoch 1 subscription close
+[21:10:25] skip epoch1:execute (0xfd42ff069a5a64fa)
+[21:10:29] epoch 2: soft fail payable refund, then a real epoch with a challenge
+[21:10:29] write softfail:bond -> propose_routing_epoch_payable value=2500000000000000 as 0xF91865fe (attempt 1/1)
+[21:11:14]   bob claimable after the rejected proposal: 2.995000 GEN
+[21:11:14] balance 0xF91865fe = 0.000000 GEN (before the refund withdrawal)
+[21:11:14] write refund:withdraw -> withdraw_refund value=0 as 0xF91865fe (attempt 1/1)
+[21:16:58] balance 0xF91865fe = 0.000000 GEN (after the refund withdrawal)
+[21:16:58] write epoch2:propose -> propose_routing_epoch_payable value=10000000000000000 as 0x3de43AA2 (attempt 1/1)
+[21:17:43] write epoch2:sub0 -> subscribe_senior_tranche_payable value=4000000000000000000 as 0x35F6cdAd (attempt 1/1)
+[21:18:28] write epoch2:sub1 -> subscribe_junior_tranche_payable value=2000000000000000000 as 0x6E52991a (attempt 1/1)
+[21:19:15] waiting 48s for epoch 2 subscription close
+[21:20:03] write epoch2:execute -> execute_consensus_rebalance value=0 as 0x3de43AA2 (attempt 1/3)
+[21:21:09] write epoch2:challenge -> challenge_routing_allocation_payable value=20000000000000000 as 0x6E52991a (attempt 1/1)
+[21:21:52] write epoch2:reaudit -> execute_consensus_rebalance value=0 as 0x35F6cdAd (attempt 1/3)
+[21:23:05] grid write grid:market_e2 -> create_market as 0x3de43AA2
+[21:23:49] write epoch2:deploy -> deploy_routed_capital_to_prophet_grid value=0 as 0x3de43AA2 (attempt 1/3)
+[21:24:36] write epoch2:reconcile -> reconcile_prophet_grid_position value=0 as 0x3de43AA2 (attempt 1/3)
+[21:25:21] waiting 35s for epoch 2 challenge deadline
+[21:25:56] write epoch2:settle -> settle_tranche_epoch value=0 as 0x3de43AA2 (attempt 1/1)
+[21:26:41] epoch 3: un audited epoch, Rule 10 timeout principal refunds
+[21:26:41] write epoch3:propose -> propose_routing_epoch_payable value=10000000000000000 as 0x3de43AA2 (attempt 1/1)
+[21:27:24] write epoch3:sub0 -> subscribe_senior_tranche_payable value=2000000000000000000 as 0xF91865fe (attempt 1/1)
+[21:28:06] write epoch3:sub1 -> subscribe_junior_tranche_payable value=1000000000000000000 as 0x6E52991a (attempt 1/1)
+[21:28:51] waiting 1254s for epoch 3 audit timeout
+[21:49:45] write epoch3:refund:bob -> claim_epoch_principal_refund value=0 as 0xF91865fe (attempt 1/1)
+[21:50:32] write epoch3:refund:carol -> claim_epoch_principal_refund value=0 as 0x6E52991a (attempt 1/1)
+[21:51:17] epoch 4: elevated tail risk routing, settlement and the final claim sweep
+[21:51:17] write epoch4:propose -> propose_routing_epoch_payable value=10000000000000000 as 0x3de43AA2 (attempt 1/1)
+[21:52:01] write epoch4:sub0 -> subscribe_junior_tranche_payable value=3000000000000000000 as 0x35F6cdAd (attempt 1/1)
+[21:52:46] write epoch4:sub1 -> subscribe_senior_tranche_payable value=2000000000000000000 as 0xF91865fe (attempt 1/1)
+[21:53:33] waiting 48s for epoch 4 subscription close
+[21:54:21] write epoch4:execute -> execute_consensus_rebalance value=0 as 0x3de43AA2 (attempt 1/3)
+[21:55:34] grid write grid:market_e4 -> create_market as 0x3de43AA2
+[21:56:18] write epoch4:deploy -> deploy_routed_capital_to_prophet_grid value=0 as 0x3de43AA2 (attempt 1/3)
+[21:57:05] write epoch4:reconcile -> reconcile_prophet_grid_position value=0 as 0x3de43AA2 (attempt 1/3)
+[21:57:51] waiting 34s for epoch 4 challenge deadline
+[21:58:25] write epoch4:settle -> settle_tranche_epoch value=0 as 0x3de43AA2 (attempt 1/1)
+[21:59:10] market making epoch: create a live ProphetGrid market, deploy, reconcile, settle
+[21:59:10] live ProphetGrid market id 6
+[21:59:10] write mm5:propose -> propose_routing_epoch_payable value=10000000000000000 as 0x3de43AA2 (attempt 1/1)
+[21:59:52] write mm5:sub0 -> subscribe_senior_tranche_payable value=6000000000000000000 as 0x35F6cdAd (attempt 1/1)
+[22:00:35] write mm5:sub1 -> subscribe_junior_tranche_payable value=4000000000000000000 as 0xF91865fe (attempt 1/1)
+[22:01:20] waiting 54s for mm 5 subscription close
+[22:02:14] write mm5:execute -> execute_consensus_rebalance value=0 as 0x3de43AA2 (attempt 1/3)
+[22:03:20] grid write grid:market_e5 -> create_market as 0x3de43AA2
+[22:04:04] write epoch5:deploy -> deploy_routed_capital_to_prophet_grid value=0 as 0x3de43AA2 (attempt 1/3)
+[22:04:51] write epoch5:reconcile -> reconcile_prophet_grid_position value=0 as 0x3de43AA2 (attempt 1/3)
+[22:05:36] waiting 42s for mm 5 challenge deadline
+[22:06:18] write mm5:settle -> settle_tranche_epoch value=0 as 0x3de43AA2 (attempt 1/1)
+[22:07:04] write sweep:alice -> claim_refundable_balance value=0 as 0x35F6cdAd (attempt 1/1)
+[22:07:09] retry 1/7 submit sweep:alice after GenLayerError: eth_getTransactionReceipt returned invalid JSON: Expecting value: line 1 column 1 (char 0). Response content: 
+[22:07:56] write sweep:bob -> claim_refundable_balance value=0 as 0xF91865fe (attempt 1/1)
+[22:08:38] write sweep:carol -> claim_refundable_balance value=0 as 0x6E52991a (attempt 1/1)
+[22:09:21] collecting on chain evidence
+[22:09:26] sha256 local=49007b0c06 git=f25eff7c7e raw=f25eff7c7e onchain=49007b0c06
+[22:09:26] invariants ok=True, transactions=48

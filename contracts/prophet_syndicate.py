@@ -1,14 +1,6 @@
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 
-"""ProphetSyndicate: AI rebalanced prediction market liquidity syndicate.
-
-Senior and junior LPs fund one PST custody vault linked on chain to an accepted
-ProphetGrid deployment. Validators quantize a live macro volatility print and the
-ProphetGrid market depth print onto a 250 bps grid and must agree exactly on the
-routing band and every wei number it produces. Yield is paid only out of entry fees
-and challenge bonds, un used or un audited epochs refund full principal, and a
-rejected payable keeps the sender's wei claimable instead of reverting.
-"""
+"""ProphetSyndicate: AI rebalanced tranche vault that really deploys routed capital into live ProphetGrid market making, tracks each position, and reconciles it before settlement."""
 
 import json
 from dataclasses import dataclass
@@ -34,6 +26,13 @@ STATUS_SETTLED = "SETTLED"
 STATUS_ZERO_UTIL = "REFUNDABLE_ZERO_UTILIZATION"
 STATUS_REFUNDABLE = "PRINCIPAL_REFUND_CLAIMABLE"
 STATUS_RELEASED = "PRINCIPAL_RELEASED"
+STATUS_DEPLOYED = "DEPLOYED_LIVE"
+STATUS_RECONCILED = "RECONCILED_LIVE"
+POS_UNDEPLOYED = "UNDEPLOYED"
+GRID_MIN_LEG = 10 ** 15
+GRID_MAX_LEG = 10 ** 21
+GRID_YES, GRID_NO = "YES", "NO"
+GRID_OPEN, GRID_FINAL, GRID_REFUNDED = "OPEN", "FINALIZED", "REFUNDED"
 PHASE_COLLECT = "COLLECTING_SUBSCRIPTIONS"
 PHASE_AWAIT_AUDIT = "AWAITING_CONSENSUS_AUDIT"
 PHASE_CHALLENGE = "CHALLENGE_WINDOW_OPEN"
@@ -76,13 +75,11 @@ CONSENSUS_FIELDS = (
     "derived_senior_yield_bps", "derived_junior_yield_bps",
 )
 ROUTING_PRINCIPLE = (
-    "The two answers must agree exactly on all seven fields, with no tolerance. routing_band must be "
-    "identical and one of HIGH_CONVICTION_DEPLOYMENT, BALANCED_HEDGE_ALLOCATION, "
-    "DEFENSIVE_COLLATERAL_BUFFER, CORRELATION_FREEZE_WITHDRAWAL. quantized_volatility_baseline_bps and "
-    "quantized_tail_risk_bps must be identical integers on the 250 bps grid inside 0 to 10000. "
-    "derived_active_deployment_amount, derived_senior_reserve_buffer, derived_senior_yield_bps and "
-    "derived_junior_yield_bps must be identical integers. A missing field, an off grid print or a band that "
-    "disagrees with its own tail risk print is not equivalent."
+    "The two answers must agree exactly on all seven fields, no tolerance. routing_band must be identical "
+    "and one of HIGH_CONVICTION_DEPLOYMENT, BALANCED_HEDGE_ALLOCATION, DEFENSIVE_COLLATERAL_BUFFER, "
+    "CORRELATION_FREEZE_WITHDRAWAL. The two quantized prints must be identical integers on the 250 bps grid "
+    "inside 0 to 10000. The four derived integers must be identical. A missing field, an off grid print, or a "
+    "band that disagrees with its own tail risk print is not equivalent."
 )
 REASON_BOND = "bond below the required amount"
 REASON_BOUNDS = "bound outside its floor or ceiling"
@@ -115,7 +112,6 @@ def _jnum(value) -> int:
     return int(head) if head.isdigit() else -1
 
 def _snap_grid(value) -> int:
-    """Snap a bps print onto the discrete 250 bps grid inside 0..10000, or -1."""
     number = _jnum(value)
     if number < 0 or number > MAX_BPS:
         return -1
@@ -124,13 +120,12 @@ def _snap_grid(value) -> int:
 def _days_from_civil(year: int, month: int, day: int) -> int:
     shifted = year - (1 if month <= 2 else 0)
     era = (shifted if shifted >= 0 else shifted - 399) // 400
-    year_of_era = shifted - era * 400
-    month_shift = month + (-3 if month > 2 else 9)
-    day_of_year = (153 * month_shift + 2) // 5 + day - 1
-    return era * 146097 + year_of_era * 365 + year_of_era // 4 - year_of_era // 100 + day_of_year - 719468
+    yo = shifted - era * 400
+    ms = month + (-3 if month > 2 else 9)
+    doy = (153 * ms + 2) // 5 + day - 1
+    return era * 146097 + yo * 365 + yo // 4 - yo // 100 + doy - 719468
 
 def _parse_epoch(raw) -> int:
-    """Parse the VM transaction datetime into UTC epoch seconds, fail closed on -1."""
     text = str(raw or "").strip()
     if len(text) < 19 or text[4] != "-" or text[7] != "-" or text[10] not in "Tt " or text[13] != ":" or text[16] != ":":
         return -1
@@ -162,14 +157,11 @@ def _addr_hex(value) -> str:
     return "0x" + bytes(_addr(value).as_bytes).hex()
 
 def _clean_text(raw, limit: int = 9000) -> str:
-    """Defuse untrusted document text. Braces survive so JSON still parses."""
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8", "replace")
     if not isinstance(raw, str):
         raw = "" if raw is None else str(raw)
-    kept = "".join(
-        " " if ord(char) < 32 or ord(char) == 127 or char in "<>" else char for char in raw.replace("</", "< /")
-    )
+    kept = "".join(" " if ord(char) < 32 or ord(char) == 127 or char in "<>" else char for char in raw.replace("</", "< /"))
     return " ".join(kept.split())[:limit]
 
 def _clean_url(raw, label: str) -> str:
@@ -183,12 +175,6 @@ def _clean_url(raw, label: str) -> str:
     return text
 
 def _scan_number(text: str, names: tuple, total: bool) -> int:
-    """Read allowed numerals straight from the document text, whatever its size.
-
-    Whole document JSON parsing cannot survive the sanitizer's length cap, so the
-    prints are scanned by key instead. The scan is deterministic, which is what
-    validator agreement needs.
-    """
     found = 0
     hit = False
     for name in names:
@@ -199,8 +185,7 @@ def _scan_number(text: str, names: tuple, total: bool) -> int:
             if at < 0:
                 break
             cursor = at + len(needle)
-            remainder = text[cursor:].lstrip()
-            token = remainder.split(",")[0].split("}")[0].split("]")[0].strip()
+            token = text[cursor:].lstrip().split(",")[0].split("}")[0].split("]")[0].strip()
             number = _jnum(token)
             if number < 0:
                 continue
@@ -223,7 +208,6 @@ def _render_text(url: str) -> str:
     return text
 
 def _volatility_bps(macro_text: str) -> int:
-    """Implied volatility print snapped onto the 250 grid. Points become bps."""
     value = _scan_number(macro_text, VOL_KEYS, False)
     if value < 0:
         _fail(ERROR_EXTERNAL + " macro feed has no usable volatility print")
@@ -233,7 +217,6 @@ def _volatility_bps(macro_text: str) -> int:
     return snapped
 
 def _depth_tail(depth_text: str, depth_reference: int) -> int:
-    """Tail risk print from the linked ProphetGrid book: skew plus thinness."""
     yes_side = max(0, _scan_number(depth_text, YES_KEYS, True))
     no_side = max(0, _scan_number(depth_text, NO_KEYS, True))
     open_interest = max(0, _scan_number(depth_text, DEPTH_KEYS, True)) or yes_side + no_side
@@ -252,7 +235,6 @@ def _derive_routing_fields(volatility_bps: int, tail_risk_bps: int, senior_commi
             else BAND_DEFENSIVE if tail_risk_bps <= TAIL_DEFENSIVE_CEILING_BPS else BAND_FREEZE)
     liquidity = senior_commit + junior_commit
     deployment = liquidity * BAND_SHARE_BPS[band] // MAX_BPS
-    floor_bps = BAND_FLOOR_BPS[band]
     spread = max(0, volatility_bps // 8 - tail_risk_bps // 4)
     return {
         "routing_band": band,
@@ -260,15 +242,13 @@ def _derive_routing_fields(volatility_bps: int, tail_risk_bps: int, senior_commi
         "quantized_tail_risk_bps": tail_risk_bps,
         "derived_active_deployment_amount": deployment,
         "derived_senior_reserve_buffer": liquidity - deployment,
-        "derived_senior_yield_bps": min(floor_bps + min(BAND_BONUS_CAP_BPS[band], volatility_bps // 4), 7500),
+        "derived_senior_yield_bps": min(BAND_FLOOR_BPS[band] + min(BAND_BONUS_CAP_BPS[band], volatility_bps // 4), 7500),
         "derived_junior_yield_bps": min(BAND_JUNIOR_BPS[band] + spread, 7500),
     }
 
 @allow_storage
 @dataclass
 class EpochRecord:
-    """One routing epoch: subscription window, consensus allocation, settlement."""
-
     epoch_id: u256
     status: str
     proposed_by: Address
@@ -287,10 +267,22 @@ class EpochRecord:
     derived_junior_yield_bps: u256
     challenge_count: u256
 
+@allow_storage
+@dataclass
+class MarketPosition:
+    target_market_id: str
+    deployed_capital_wei: u256
+    yes_shares_recorded: u256
+    no_shares_recorded: u256
+    prophet_grid_entry_snapshot: str
+    deployment_status: str
+    reconciled: bool
+    reconciled_return_wei: u256
+    realized_gain_wei: u256
+    realized_loss_wei: u256
+
 @gl.evm.contract_interface
 class NativeCustodyAccount:
-    """EVM level view of the account holding bond, credit and refund custody."""
-
     class View:
         pass
 
@@ -298,8 +290,6 @@ class NativeCustodyAccount:
         pass
 
 class ProphetSyndicate(gl.Contract):
-    """Senior and junior tranche custody with consensus bound capital routing."""
-
     linked_prophet_grid_address: str
     linked_probe_status: str
     macro_feed_url: str
@@ -326,18 +316,13 @@ class ProphetSyndicate(gl.Contract):
     default_subscription_window_seconds: u256
     default_challenge_window_seconds: u256
     default_timeout_window_seconds: u256
+    positions: TreeMap[str, MarketPosition]
+    active_deployed_to_prophet_grid: u256
+    reconciled_proceeds_total: u256
 
-    def __init__(
-        self,
-        linked_prophet_grid_address: str,
-        macro_feed_url: str,
-        market_depth_url: str,
-        tranche_epoch_cap_wei: u256,
-        routing_bond_wei: u256,
-        subscription_window_seconds: u256,
-        challenge_window_seconds: u256,
-        timeout_window_seconds: u256,
-    ) -> None:
+    def __init__(self, linked_prophet_grid_address: str, macro_feed_url: str, market_depth_url: str,
+                 tranche_epoch_cap_wei: u256, routing_bond_wei: u256, subscription_window_seconds: u256,
+                 challenge_window_seconds: u256, timeout_window_seconds: u256) -> None:
         self.linked_prophet_grid_address = _addr_hex(linked_prophet_grid_address or DEFAULT_LINKED_PROPHET_GRID_ADDRESS)
         self.linked_probe_status = "NOT_PROBED"
         self.macro_feed_url = _clean_url(macro_feed_url or DEFAULT_MACRO_FEED_URL, "macro feed")
@@ -348,6 +333,8 @@ class ProphetSyndicate(gl.Contract):
         self.default_subscription_window_seconds = u256(self._bound(subscription_window_seconds, MIN_SUBSCRIPTION_WINDOW_SECONDS, MAX_WINDOW_SECONDS))
         self.default_challenge_window_seconds = u256(self._bound(challenge_window_seconds, MIN_CHALLENGE_WINDOW_SECONDS, MAX_WINDOW_SECONDS))
         self.default_timeout_window_seconds = u256(self._bound(timeout_window_seconds, MIN_TIMEOUT_WINDOW_SECONDS, MAX_WINDOW_SECONDS))
+        self.active_deployed_to_prophet_grid = u256(0)
+        self.reconciled_proceeds_total = u256(0)
 
     def _bound(self, value, low: int, high: int) -> int:
         number = _jnum(value)
@@ -387,6 +374,8 @@ class ProphetSyndicate(gl.Contract):
         if record.status in (STATUS_ZERO_UTIL, STATUS_REFUNDABLE):
             return PHASE_REFUNDABLE
         if record.status == STATUS_FINALIZED:
+            if now >= _u(record.rebalance_timeout_epoch):
+                return PHASE_REFUNDABLE
             return PHASE_CHALLENGE if now < _u(record.rebalance_challenge_deadline_epoch) else PHASE_READY
         if now >= _u(record.rebalance_timeout_epoch):
             return PHASE_REFUNDABLE
@@ -404,11 +393,9 @@ class ProphetSyndicate(gl.Contract):
         return None
 
     def _soft_fail(self, sender: Address, value: int, reason: str) -> str:
-        """Rule 8: a rejected payable never reverts while it carries native value."""
         self.native_custody_balance = u256(_u(self.native_custody_balance) + value)
         self._owe(sender, value)
         self.last_payable_rejection[sender] = REJECT_PREFIX + reason
-
         return json.dumps({"accepted": False, "reason": reason, "refundable_wei": str(self._bucket(self.refundable_balances, sender))})
 
     def _mint_principal(self, account: Address, tranche: str, amount: int) -> None:
@@ -461,16 +448,43 @@ class ProphetSyndicate(gl.Contract):
         except Exception:
             return -1
 
+    def _self_hex(self) -> str:
+        return "0x" + bytes(gl.message.contract_address.as_bytes).hex()
+
+    def _grid(self):
+        return gl.get_contract_at(_addr(self.linked_prophet_grid_address))
+
+    def _shave_principal(self, loss: int) -> None:
+        for tranche in (TRANCHE_JUNIOR, TRANCHE_SENIOR):
+            table = self._table(tranche)
+            for holder in self.lp_index:
+                if loss <= 0:
+                    break
+                account = _addr(holder)
+                cut = min(self._bucket(table, account), loss)
+                if cut <= 0:
+                    continue
+                table[account] = u256(self._bucket(table, account) - cut)
+                total = self.senior_principal_total if tranche == TRANCHE_SENIOR else self.junior_principal_total
+                if tranche == TRANCHE_SENIOR:
+                    self.senior_principal_total = u256(_u(total) - cut)
+                else:
+                    self.junior_principal_total = u256(_u(total) - cut)
+                self.vault_custody_balance = u256(_u(self.vault_custody_balance) - cut)
+                self.pst_total_supply = u256(_u(self.pst_total_supply) - cut)
+                loss -= cut
+
     def _compute_syndicate_epoch_state(self, record: EpochRecord) -> dict:
-        """One helper derives every epoch fact. Views, guards and payouts all read it."""
         floor_bps = BAND_FLOOR_BPS.get(record.routing_band, 0)
         state = {}
         for name in EPOCH_FIELDS:
             value = getattr(record, name)
             state[name] = _addr_hex(value) if isinstance(value, Address) else str(_u(value) if isinstance(value, int) else value)
         state["phase"] = self._phase(record)
-        floor_wei = _u(record.senior_commit_wei) * floor_bps // MAX_BPS
-        state["senior_floor_wei"] = str(floor_wei)
+        state["senior_floor_wei"] = str(_u(record.senior_commit_wei) * floor_bps // MAX_BPS)
+        position = self.positions.get(state["epoch_id"])
+        state["prophet_grid_deployment_status"] = position.deployment_status if position is not None else POS_UNDEPLOYED
+        state["prophet_grid_reconciled"] = bool(position is not None and position.reconciled)
         return state
 
     @gl.public.write.payable
@@ -562,8 +576,7 @@ class ProphetSyndicate(gl.Contract):
         senior_commit = _u(self.senior_principal_total)
         junior_commit = _u(self.junior_principal_total)
         try:
-            proxy = gl.get_contract_at(_addr(self.linked_prophet_grid_address))
-            self.linked_probe_status = "VERIFIED_" + str(_u(proxy.view().get_market_count())) + " PROPHETGRID MARKETS"
+            self.linked_probe_status = "VERIFIED_" + str(_u(self._grid().view().get_market_count())) + " PROPHETGRID MARKETS"
         except Exception:
             self.linked_probe_status = "UNAVAILABLE"
         macro_url = self.macro_feed_url
@@ -589,10 +602,9 @@ class ProphetSyndicate(gl.Contract):
             _fail(ERROR_EXPECTED + " routing consensus did not conserve epoch liquidity")
         now = self._now()
         chal = _u(self.default_challenge_window_seconds)
-        deadline = u256(now + chal)
         record = EpochRecord(
             record.epoch_id, STATUS_FINALIZED if model["derived_active_deployment_amount"] > 0 else STATUS_ZERO_UTIL,
-            record.proposed_by, record.subscription_close_epoch, deadline,
+            record.proposed_by, record.subscription_close_epoch, u256(now + chal),
             u256(max(_u(record.rebalance_timeout_epoch), now + chal + _u(self.default_timeout_window_seconds))),
             record.depth_reference_units, u256(senior_commit), u256(junior_commit), model["routing_band"],
             u256(model["quantized_volatility_baseline_bps"]), u256(model["quantized_tail_risk_bps"]),
@@ -604,10 +616,94 @@ class ProphetSyndicate(gl.Contract):
         return json.dumps(self._compute_syndicate_epoch_state(record))
 
     @gl.public.write
+    def deploy_routed_capital_to_prophet_grid(self, epoch_id: u256, target_market_id: str, yes_leg_amount: u256, no_leg_amount: u256) -> str:
+        record = self._require_epoch(epoch_id)
+        if record.status != STATUS_FINALIZED:
+            _fail(ERROR_EXPECTED + " only a finalized epoch with routed capital may deploy")
+        key = str(_u(record.epoch_id))
+        if self.positions.get(key) is not None:
+            _fail(ERROR_EXPECTED + " this epoch already has a ProphetGrid position")
+        routed = _u(record.derived_active_deployment_amount)
+        if routed <= 0:
+            _fail(ERROR_EXPECTED + " this epoch routed no capital to ProphetGrid")
+        market = _clean_text(target_market_id, 16)
+        if not market.isdigit() or not 0 < int(market) <= 1000000:
+            _fail(ERROR_EXPECTED + " target market id must be a bounded decimal")
+        yes_leg = _u(yes_leg_amount)
+        no_leg = _u(no_leg_amount)
+        if yes_leg + no_leg != routed:
+            _fail(ERROR_EXPECTED + " market making legs must equal the routed deployment exactly")
+        if not GRID_MIN_LEG <= yes_leg <= GRID_MAX_LEG or not GRID_MIN_LEG <= no_leg <= GRID_MAX_LEG:
+            _fail(ERROR_EXPECTED + " each ProphetGrid leg must stay inside the staking bounds")
+        if routed > _u(self.native_custody_balance):
+            _fail(ERROR_EXPECTED + " the vault does not hold the capital being deployed")
+        grid = self._grid()
+        grid.emit(value=u256(yes_leg), on="finalized").acquire_outcome_shares_payable(market, GRID_YES)
+        grid.emit(value=u256(no_leg), on="finalized").acquire_outcome_shares_payable(market, GRID_NO)
+        self.native_custody_balance = u256(_u(self.native_custody_balance) - routed)
+        self.active_deployed_to_prophet_grid = u256(_u(self.active_deployed_to_prophet_grid) + routed)
+        self.positions[key] = MarketPosition(market, u256(routed), u256(yes_leg), u256(no_leg),
+                                             "PROPHETGRID " + market + " DUAL_LEG_DEPLOYED", STATUS_DEPLOYED, False, u256(0), u256(0), u256(0))
+        return json.dumps({"epoch_id": key, "target_market_id": market, "deployed_capital_wei": str(routed),
+                           "yes_leg_wei": str(yes_leg), "no_leg_wei": str(no_leg), "deployment_status": STATUS_DEPLOYED})
+
+    @gl.public.write
+    def reconcile_prophet_grid_position(self, epoch_id: u256) -> str:
+        record = self._require_epoch(epoch_id)
+        key = str(_u(record.epoch_id))
+        position = self.positions.get(key)
+        if position is None:
+            _fail(ERROR_EXPECTED + " no ProphetGrid position is recorded for this epoch")
+        if position.deployment_status != STATUS_DEPLOYED:
+            _fail(ERROR_EXPECTED + " this ProphetGrid position is not awaiting reconciliation")
+        market = position.target_market_id
+        raw = self._grid().view().preview_payout(market, self._self_hex())
+        book = json.loads(_clean_text(raw, 6000))
+        deployed = _u(position.deployed_capital_wei)
+        status = str(book.get("status", ""))
+        estimated = _u(book.get("estimated_payout", 0))
+        refundable = _u(book.get("refund_amount", 0))
+        principal = _u(book.get("principal", 0))
+        grid = self._grid()
+        if status == GRID_FINAL and estimated > 0:
+            proceeds = estimated
+            grid.emit(on="finalized").claim_market_winnings(market)
+        else:
+            proceeds = refundable if refundable > 0 else (principal if principal > 0 else deployed)
+            grid.emit(on="finalized").claim_refund(market)
+        gain = proceeds - deployed if proceeds > deployed else 0
+        loss = deployed - proceeds if proceeds < deployed else 0
+        self.active_deployed_to_prophet_grid = u256(_u(self.active_deployed_to_prophet_grid) - deployed)
+        self.reconciled_proceeds_total = u256(_u(self.reconciled_proceeds_total) + proceeds)
+        if gain > 0:
+            self.syndicate_yield_pool_wei = u256(_u(self.syndicate_yield_pool_wei) + gain)
+        if loss > 0:
+            self._shave_principal(loss)
+            cut_j = min(loss, _u(record.junior_commit_wei))
+            record.junior_commit_wei = u256(_u(record.junior_commit_wei) - cut_j)
+            record.senior_commit_wei = u256(_u(record.senior_commit_wei) - (loss - cut_j))
+            self._save(record)
+        position.yes_shares_recorded = u256(_u(book.get("yes_shares", 0)) or _u(position.yes_shares_recorded))
+        position.no_shares_recorded = u256(_u(book.get("no_shares", 0)) or _u(position.no_shares_recorded))
+        position.prophet_grid_entry_snapshot = _clean_text(raw, 900)
+        position.deployment_status = STATUS_RECONCILED
+        position.reconciled = True
+        position.reconciled_return_wei = u256(proceeds)
+        position.realized_gain_wei = u256(gain)
+        position.realized_loss_wei = u256(loss)
+        self.positions[key] = position
+        return json.dumps({"epoch_id": key, "target_market_id": market, "reconciled_return_wei": str(proceeds),
+                           "realized_gain_wei": str(gain), "realized_loss_wei": str(loss), "reconciled": True})
+
+    @gl.public.write
     def settle_tranche_epoch(self, epoch_id: u256) -> str:
         record = self._require_epoch(epoch_id)
         if self._phase(record) != PHASE_READY:
             _fail(ERROR_EXPECTED + " settlement needs a finalized epoch past its challenge deadline")
+        routed = _u(record.derived_active_deployment_amount)
+        position = self.positions.get(str(_u(record.epoch_id)))
+        if routed > 0 and (position is None or not position.reconciled):
+            _fail(ERROR_EXPECTED + " routed capital must be deployed to and reconciled with ProphetGrid before settlement")
         pool = _u(self.syndicate_yield_pool_wei)
         paid_total = 0
         payouts = {}
@@ -634,8 +730,10 @@ class ProphetSyndicate(gl.Contract):
             "epoch_id": str(_u(record.epoch_id)), "routing_band": record.routing_band, "settled": True,
             "senior_yield_wei": str(payouts[TRANCHE_SENIOR][0]), "senior_principal_wei": str(payouts[TRANCHE_SENIOR][1]),
             "junior_yield_wei": str(payouts[TRANCHE_JUNIOR][0]), "junior_principal_wei": str(payouts[TRANCHE_JUNIOR][1]),
-            "pool_used_wei": str(paid_total),
-            "pool_left_wei": str(_u(self.syndicate_yield_pool_wei)),
+            "pool_used_wei": str(paid_total), "pool_left_wei": str(_u(self.syndicate_yield_pool_wei)),
+            "reconciled_return_wei": str(_u(position.reconciled_return_wei)) if position is not None else "0",
+            "realized_gain_wei": str(_u(position.realized_gain_wei)) if position is not None else "0",
+            "realized_loss_wei": str(_u(position.realized_loss_wei)) if position is not None else "0",
         })
 
     @gl.public.write
@@ -649,15 +747,13 @@ class ProphetSyndicate(gl.Contract):
         moved = self._release_principal(account, TRANCHE_SENIOR)
         moved += self._release_principal(account, TRANCHE_JUNIOR)
         if moved <= 0:
-            _fail(ERROR_EXPECTED + " " + "no locked principal left")
+            _fail(ERROR_EXPECTED + " no locked principal left")
         self._owe(account, moved)
         if _u(self.senior_principal_total) + _u(self.junior_principal_total) <= 0:
             self._release_bond(record.proposed_by, _u(self.routing_bond_wei), record.status == STATUS_REFUNDABLE)
             record.status = STATUS_RELEASED
         self._save(record)
-        return json.dumps({
-            "epoch_id": str(_u(record.epoch_id)), "refunded_principal_wei": str(moved), "status": record.status,
-        })
+        return json.dumps({"epoch_id": str(_u(record.epoch_id)), "refunded_principal_wei": str(moved), "status": record.status})
 
     @gl.public.write
     def withdraw_refund(self, amount: u256) -> str:
@@ -703,6 +799,27 @@ class ProphetSyndicate(gl.Contract):
         })
 
     @gl.public.view
+    def get_epoch_prophet_grid_position(self, epoch_id: u256) -> dict:
+        key = str(int(_u(epoch_id)))
+        position = self.positions.get(key)
+        shared = {"epoch_id": key, "active_deployed_to_prophet_grid": str(_u(self.active_deployed_to_prophet_grid)),
+                  "reconciled_proceeds_total": str(_u(self.reconciled_proceeds_total))}
+        if position is None:
+            shared["has_position"] = False
+            shared["deployment_status"] = POS_UNDEPLOYED
+            return shared
+        shared.update({
+            "has_position": True, "target_market_id": position.target_market_id,
+            "deployed_capital_wei": str(_u(position.deployed_capital_wei)),
+            "yes_shares_recorded": str(_u(position.yes_shares_recorded)), "no_shares_recorded": str(_u(position.no_shares_recorded)),
+            "prophet_grid_entry_snapshot": position.prophet_grid_entry_snapshot,
+            "deployment_status": position.deployment_status, "reconciled": bool(position.reconciled),
+            "reconciled_return_wei": str(_u(position.reconciled_return_wei)),
+            "realized_gain_wei": str(_u(position.realized_gain_wei)), "realized_loss_wei": str(_u(position.realized_loss_wei)),
+        })
+        return shared
+
+    @gl.public.view
     def get_custody_accounting_summary(self) -> str:
         senior = _u(self.senior_principal_total)
         junior = _u(self.junior_principal_total)
@@ -710,6 +827,9 @@ class ProphetSyndicate(gl.Contract):
         bonds = _u(self.bond_total)
         pool = _u(self.syndicate_yield_pool_wei)
         bucketed = senior + junior + claimable + bonds + pool
+        deployed = _u(self.active_deployed_to_prophet_grid)
+        proceeds = _u(self.reconciled_proceeds_total)
+        total_assets = _u(self.native_custody_balance) + deployed + proceeds
         reserved = 0
         unfunded = 0
         rows = []
@@ -722,28 +842,27 @@ class ProphetSyndicate(gl.Contract):
             if state["phase"] != PHASE_DONE:
                 reserved += int(state["senior_commit_wei"]) + int(state["junior_commit_wei"])
                 unfunded += max(0, int(state["senior_floor_wei"]) - pool)
-        balance = self._account_native_balance()
         checks = {
-            "custody_partition_exact": bucketed == _u(self.native_custody_balance),
+            "custody_partition_exact": bucketed == total_assets,
             "pst_backed_by_custody": _u(self.pst_total_supply) == _u(self.vault_custody_balance) == senior + junior,
-            "locked_principal_reserved": reserved <= _u(self.native_custody_balance),
+            "locked_principal_reserved": reserved <= total_assets,
+            "deployed_within_custody": deployed <= total_assets,
         }
         return json.dumps({
             "ok": all(checks.values()), "checks": checks, "clock_epoch": str(self._now()), "epochs": rows,
             "partition": {"senior_principal_wei": str(senior), "junior_principal_wei": str(junior),
                           "claimable_wei": str(claimable), "locked_bond_wei": str(bonds), "yield_pool_wei": str(pool)},
             "native_custody_balance": str(_u(self.native_custody_balance)),
+            "active_deployed_to_prophet_grid": str(deployed), "reconciled_proceeds_total": str(proceeds),
+            "total_custody_assets_wei": str(total_assets),
             "vault_custody_balance": str(_u(self.vault_custody_balance)), "pst_total_supply": str(_u(self.pst_total_supply)),
-            "epoch_count": str(len(self.epoch_ids)),
-            "vm_account_balance_wei": str(balance), "reserved_liability_wei": str(reserved),
-            "unfunded_floor_wei": str(unfunded),
-
-            "linked_prophet_grid_address": self.linked_prophet_grid_address,
-            "linked_probe_status": self.linked_probe_status,
+            "epoch_count": str(len(self.epoch_ids)), "vm_account_balance_wei": str(self._account_native_balance()),
+            "reserved_liability_wei": str(reserved), "unfunded_floor_wei": str(unfunded),
+            "linked_prophet_grid_address": self.linked_prophet_grid_address, "linked_probe_status": self.linked_probe_status,
             "macro_feed_url": self.macro_feed_url, "market_depth_url": self.market_depth_url,
             "runner_pin": RUNNER_PIN, "principle": ROUTING_PRINCIPLE,
             "limits": {"tranche_epoch_cap_wei": str(_u(self.tranche_epoch_cap_wei)),
-                       "routing_bond_wei": str(_u(self.routing_bond_wei)), "challenge_bond_wei": str(_u((2 * self.routing_bond_wei))),
+                       "routing_bond_wei": str(_u(self.routing_bond_wei)), "challenge_bond_wei": str(_u(2 * self.routing_bond_wei)),
                        "entry_fee_bps": str(ENTRY_FEE_BPS), "min_subscription_wei": str(MIN_SUBSCRIBE_WEI),
                        "subscription_seconds": str(_u(self.default_subscription_window_seconds)),
                        "challenge_seconds": str(_u(self.default_challenge_window_seconds)),

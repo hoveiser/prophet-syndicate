@@ -9,7 +9,7 @@ reachability and native payouts are proven by the studionet transactions in
 evidence/studionet_deployment.json.
 """
 
-from conftest import DEEP, GEN, SHALLOW, at, mock_feeds, payload, split_receipt, state_for
+from conftest import DEEP, GEN, SHALLOW, MockGrid, at, deploy_and_reconcile, install_grid, mock_feeds, payload, split_receipt, state_for
 
 BOND = 10 ** 16
 FEE_BPS = 25
@@ -443,6 +443,7 @@ def test_routing_conserves_liquidity_across_every_band(direct_vm, syndicate, dir
             state["senior_commit_wei"]
         ) + int(state["junior_commit_wei"])
         at(direct_vm, _iso(base + 1700))
+        deploy_and_reconcile(syndicate, epoch_id)
         syndicate.settle_tranche_epoch(epoch_id)
 
 
@@ -602,6 +603,7 @@ def test_settlement_is_refused_for_an_unfinalized_epoch(direct_vm, syndicate, di
 
 def test_settlement_releases_principal_and_pool_funded_yield(direct_vm, syndicate, direct_alice):
     audited(direct_vm, syndicate, direct_alice)
+    deploy_and_reconcile(syndicate, 1)
     at(direct_vm, "2026-11-01T12:30:01Z")
     report = payload(syndicate.settle_tranche_epoch(1))
     assert report["settled"] is True
@@ -616,6 +618,7 @@ def test_settlement_releases_principal_and_pool_funded_yield(direct_vm, syndicat
 def test_settlement_cannot_pay_more_yield_than_the_pool_holds(direct_vm, syndicate, direct_alice):
     audited(direct_vm, syndicate, direct_alice)
     before = payload(syndicate.get_custody_accounting_summary())
+    deploy_and_reconcile(syndicate, 1)
     at(direct_vm, "2026-11-01T12:30:01Z")
     report = payload(syndicate.settle_tranche_epoch(1))
     after = payload(syndicate.get_custody_accounting_summary())
@@ -630,6 +633,7 @@ def test_senior_yield_is_paid_before_any_junior_yield(direct_vm, syndicate, dire
     mock_feeds(direct_vm, macro("12.0"), DEEP_BOOK)
     at(direct_vm, "2026-11-01T12:11:00Z")
     syndicate.execute_consensus_rebalance(1)
+    deploy_and_reconcile(syndicate, 1)
     at(direct_vm, "2026-11-01T12:30:01Z")
     report = payload(syndicate.settle_tranche_epoch(1))
     assert int(report["senior_yield_wei"]) > 0
@@ -638,6 +642,7 @@ def test_senior_yield_is_paid_before_any_junior_yield(direct_vm, syndicate, dire
 
 def test_an_epoch_settles_only_once(direct_vm, syndicate, direct_alice):
     audited(direct_vm, syndicate, direct_alice)
+    deploy_and_reconcile(syndicate, 1)
     at(direct_vm, "2026-11-01T12:30:01Z")
     syndicate.settle_tranche_epoch(1)
     try:
@@ -649,6 +654,7 @@ def test_an_epoch_settles_only_once(direct_vm, syndicate, direct_alice):
 
 def test_settlement_returns_the_routing_bond_to_the_proposer(direct_vm, syndicate, direct_alice):
     audited(direct_vm, syndicate, direct_alice)
+    deploy_and_reconcile(syndicate, 1)
     at(direct_vm, "2026-11-01T12:30:01Z")
     syndicate.settle_tranche_epoch(1)
     summary = payload(syndicate.get_custody_accounting_summary())
@@ -659,6 +665,7 @@ def test_settlement_returns_the_routing_bond_to_the_proposer(direct_vm, syndicat
 def test_a_settled_epoch_stops_reserving_liability(direct_vm, syndicate, direct_alice):
     audited(direct_vm, syndicate, direct_alice)
     reserved_before = int(payload(syndicate.get_custody_accounting_summary())["reserved_liability_wei"])
+    deploy_and_reconcile(syndicate, 1)
     at(direct_vm, "2026-11-01T12:30:01Z")
     syndicate.settle_tranche_epoch(1)
     summary = payload(syndicate.get_custody_accounting_summary())
@@ -721,6 +728,7 @@ def test_a_missing_audit_forfeits_the_routing_bond_to_lp_yield(direct_vm, syndic
 
 def test_settled_epochs_are_not_refundable(direct_vm, syndicate, direct_alice):
     audited(direct_vm, syndicate, direct_alice)
+    deploy_and_reconcile(syndicate, 1)
     at(direct_vm, "2026-11-01T12:30:01Z")
     syndicate.settle_tranche_epoch(1)
     try:
@@ -832,6 +840,7 @@ def test_position_view_exposes_the_live_epoch_and_balances(direct_vm, syndicate,
 
 def test_summary_lists_every_epoch_with_its_phase(direct_vm, syndicate, direct_alice):
     audited(direct_vm, syndicate, direct_alice)
+    deploy_and_reconcile(syndicate, 1)
     at(direct_vm, "2026-11-01T12:30:01Z")
     syndicate.settle_tranche_epoch(1)
     syndicate.propose_routing_epoch_payable(DEEP)
@@ -847,6 +856,7 @@ def test_a_second_epoch_opens_only_after_the_first_is_released(direct_vm, syndic
     at(direct_vm, "2026-11-01T12:30:00Z")
     result = payload(syndicate.propose_routing_epoch_payable(DEEP))
     assert result["accepted"] is False
+    deploy_and_reconcile(syndicate, 1)
     at(direct_vm, "2026-11-01T12:30:01Z")
     syndicate.settle_tranche_epoch(1)
     direct_vm.value = BOND
@@ -866,9 +876,185 @@ def test_invariants_hold_across_a_full_epoch_lifecycle(direct_vm, syndicate, dir
     mock_feeds(direct_vm, macro("18.53"), TILTED_BOOK)
     syndicate.execute_consensus_rebalance(1)
     at(direct_vm, "2026-11-01T12:40:00Z")
+    deploy_and_reconcile(syndicate, 1)
     syndicate.settle_tranche_epoch(1)
     summary = payload(syndicate.get_custody_accounting_summary())
     assert summary["ok"] is True
     assert summary["epoch_count"] == "1"
     assert int(summary["epoch_count"]) >= 1
-    assert sum(int(value) for value in summary["partition"].values()) == int(summary["native_custody_balance"])
+    bucketed = sum(int(value) for value in summary["partition"].values())
+    assets = int(summary["native_custody_balance"]) + int(summary["active_deployed_to_prophet_grid"]) + int(summary["reconciled_proceeds_total"])
+    assert bucketed == assets == int(summary["total_custody_assets_wei"])
+    assert int(summary["reconciled_proceeds_total"]) > 0
+    assert summary["checks"]["custody_partition_exact"] is True
+
+
+# ----------------------------------------------------------------------
+# Real ProphetGrid cross contract deployment, position, and reconciliation
+# ----------------------------------------------------------------------
+
+
+def _leg_split(state):
+    routed = int(state["derived_active_deployment_amount"])
+    return routed, routed // 2, routed - routed // 2
+
+
+def test_settle_reverts_when_routed_capital_is_not_deployed(direct_vm, syndicate, direct_alice):
+    audited(direct_vm, syndicate, direct_alice)
+    at(direct_vm, "2026-11-01T12:30:01Z")
+    try:
+        syndicate.settle_tranche_epoch(1)
+        raise AssertionError("settlement must be blocked until ProphetGrid reconciliation")
+    except Exception as exc:
+        assert "reconciled" in str(exc) and "deployed" in str(exc)
+
+
+def test_settle_reverts_when_deployed_but_not_reconciled(direct_vm, syndicate, direct_alice):
+    state = audited(direct_vm, syndicate, direct_alice)
+    routed, yes_leg, no_leg = _leg_split(state)
+    install_grid(MockGrid(ratio_bps=10000))
+    syndicate.deploy_routed_capital_to_prophet_grid(1, "5", yes_leg, no_leg)
+    at(direct_vm, "2026-11-01T12:30:01Z")
+    try:
+        syndicate.settle_tranche_epoch(1)
+        raise AssertionError("an unreconciled live position must not settle")
+    except Exception as exc:
+        assert "reconciled" in str(exc)
+
+
+def test_deploy_moves_capital_out_of_idle_custody(direct_vm, syndicate, direct_alice):
+    state = audited(direct_vm, syndicate, direct_alice)
+    routed, yes_leg, no_leg = _leg_split(state)
+    before = int(payload(syndicate.get_custody_accounting_summary())["native_custody_balance"])
+    install_grid(MockGrid())
+    receipt = payload(syndicate.deploy_routed_capital_to_prophet_grid(1, "5", yes_leg, no_leg))
+    summary = payload(syndicate.get_custody_accounting_summary())
+    position = payload(syndicate.get_epoch_prophet_grid_position(1))
+    assert receipt["deployment_status"] == "DEPLOYED_LIVE"
+    assert int(summary["native_custody_balance"]) == before - routed
+    assert int(summary["active_deployed_to_prophet_grid"]) == routed
+    assert position["has_position"] is True
+    assert int(position["yes_shares_recorded"]) == yes_leg
+    assert int(position["no_shares_recorded"]) == no_leg
+    assert position["reconciled"] is False
+    assert summary["checks"]["custody_partition_exact"] is True
+
+
+def test_reconcile_neutral_restores_invariants_and_closes_position(direct_vm, syndicate, direct_alice):
+    state = audited(direct_vm, syndicate, direct_alice)
+    routed, yes_leg, no_leg = _leg_split(state)
+    install_grid(MockGrid(ratio_bps=10000))
+    syndicate.deploy_routed_capital_to_prophet_grid(1, "5", yes_leg, no_leg)
+    report = payload(syndicate.reconcile_prophet_grid_position(1))
+    summary = payload(syndicate.get_custody_accounting_summary())
+    position = payload(syndicate.get_epoch_prophet_grid_position(1))
+    assert int(report["reconciled_return_wei"]) == routed
+    assert report["realized_gain_wei"] == "0" and report["realized_loss_wei"] == "0"
+    assert position["reconciled"] is True and position["deployment_status"] == "RECONCILED_LIVE"
+    assert int(summary["active_deployed_to_prophet_grid"]) == 0
+    assert int(summary["reconciled_proceeds_total"]) == routed
+    assert summary["ok"] is True
+
+
+def test_reconcile_records_market_making_gain(direct_vm, syndicate, direct_alice):
+    state = audited(direct_vm, syndicate, direct_alice)
+    routed, yes_leg, no_leg = _leg_split(state)
+    pool_before = int(payload(syndicate.get_custody_accounting_summary())["partition"]["yield_pool_wei"])
+    install_grid(MockGrid(ratio_bps=12500))
+    syndicate.deploy_routed_capital_to_prophet_grid(1, "5", yes_leg, no_leg)
+    report = payload(syndicate.reconcile_prophet_grid_position(1))
+    summary = payload(syndicate.get_custody_accounting_summary())
+    gain = routed // 4
+    assert int(report["realized_gain_wei"]) == gain
+    assert report["realized_loss_wei"] == "0"
+    assert int(summary["partition"]["yield_pool_wei"]) == pool_before + gain
+    assert summary["ok"] is True and summary["checks"]["custody_partition_exact"] is True
+
+
+def test_reconcile_junior_absorbs_first_loss_and_senior_is_protected(direct_vm, syndicate, direct_alice, direct_bob):
+    funded(direct_vm, syndicate, direct_alice, 4 * GEN, 2 * GEN, direct_bob)
+    mock_feeds(direct_vm, macro("18.53"), DEEP_BOOK)
+    at(direct_vm, "2026-11-01T12:11:00Z")
+    syndicate.execute_consensus_rebalance(1)
+    state = state_for(syndicate, 1)
+    routed, yes_leg, no_leg = _leg_split(state)
+    senior_before = int(payload(syndicate.get_custody_accounting_summary())["partition"]["senior_principal_wei"])
+    install_grid(MockGrid(ratio_bps=9000))
+    syndicate.deploy_routed_capital_to_prophet_grid(1, "5", yes_leg, no_leg)
+    report = payload(syndicate.reconcile_prophet_grid_position(1))
+    summary = payload(syndicate.get_custody_accounting_summary())
+    loss = routed - routed * 9000 // 10000
+    assert int(report["realized_loss_wei"]) == loss
+    assert report["realized_gain_wei"] == "0"
+    assert int(summary["partition"]["senior_principal_wei"]) == senior_before
+    assert int(summary["partition"]["junior_principal_wei"]) < 2 * GEN - 2 * GEN * FEE_BPS // 10000
+    assert summary["ok"] is True
+    assert summary["checks"]["pst_backed_by_custody"] is True
+
+
+def test_deploy_refuses_legs_that_do_not_sum_to_the_routed_amount(direct_vm, syndicate, direct_alice):
+    state = audited(direct_vm, syndicate, direct_alice)
+    routed, yes_leg, no_leg = _leg_split(state)
+    install_grid(MockGrid())
+    try:
+        syndicate.deploy_routed_capital_to_prophet_grid(1, "5", yes_leg + 1, no_leg)
+        raise AssertionError("legs must equal the routed deployment exactly")
+    except Exception as exc:
+        assert "equal the routed deployment" in str(exc)
+
+
+def test_deploy_refuses_a_non_finalized_epoch(direct_vm, syndicate, direct_alice):
+    opened(direct_vm, syndicate, direct_alice)
+    direct_vm.value = GEN
+    split_receipt(syndicate.subscribe_senior_tranche_payable())
+    install_grid(MockGrid())
+    try:
+        syndicate.deploy_routed_capital_to_prophet_grid(1, "5", GEN // 2, GEN - GEN // 2)
+        raise AssertionError("an unaudited epoch must not deploy")
+    except Exception as exc:
+        assert "finalized" in str(exc)
+
+
+def test_deploy_is_idempotent_guarded(direct_vm, syndicate, direct_alice):
+    state = audited(direct_vm, syndicate, direct_alice)
+    routed, yes_leg, no_leg = _leg_split(state)
+    install_grid(MockGrid())
+    syndicate.deploy_routed_capital_to_prophet_grid(1, "5", yes_leg, no_leg)
+    try:
+        syndicate.deploy_routed_capital_to_prophet_grid(1, "5", yes_leg, no_leg)
+        raise AssertionError("a deployed epoch must not deploy twice")
+    except Exception as exc:
+        assert "already has a ProphetGrid position" in str(exc)
+
+
+def test_reconcile_refuses_a_position_that_is_not_deployed(direct_vm, syndicate, direct_alice):
+    audited(direct_vm, syndicate, direct_alice)
+    install_grid(MockGrid())
+    try:
+        syndicate.reconcile_prophet_grid_position(1)
+        raise AssertionError("reconcile needs a deployed position")
+    except Exception as exc:
+        assert "no ProphetGrid position" in str(exc)
+
+
+def test_reconcile_cannot_run_twice(direct_vm, syndicate, direct_alice):
+    audited(direct_vm, syndicate, direct_alice)
+    deploy_and_reconcile(syndicate, 1)
+    install_grid(MockGrid())
+    try:
+        syndicate.reconcile_prophet_grid_position(1)
+        raise AssertionError("a reconciled position must not reconcile twice")
+    except Exception as exc:
+        assert "not awaiting reconciliation" in str(exc)
+
+
+def test_view_exposes_active_deployed_and_reconciled_proceeds(direct_vm, syndicate, direct_alice):
+    audited(direct_vm, syndicate, direct_alice)
+    deploy_and_reconcile(syndicate, 1)
+    summary = payload(syndicate.get_custody_accounting_summary())
+    assert "active_deployed_to_prophet_grid" in summary
+    assert "reconciled_proceeds_total" in summary
+    assert int(summary["reconciled_proceeds_total"]) > 0
+    position = payload(syndicate.get_epoch_prophet_grid_position(1))
+    assert position["target_market_id"] == "5"
+    assert int(position["reconciled_return_wei"]) > 0

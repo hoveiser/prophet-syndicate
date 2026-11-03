@@ -1,16 +1,16 @@
 export const CONTRACT_ADDRESS: `0x${string}` =
   (import.meta.env.VITE_CONTRACT_ADDRESS as `0x${string}` | undefined) ??
-  "0x206bdF01A814e8ae27EbC4A7aC138995217B95F8";
+  "0x0F9e290348e1500fA0800DDB89e5d770723038ef";
 
 export const RPC_URL = "https://studio.genlayer.com/api";
 export const CHAIN_ID = 61999;
 export const NETWORK_LABEL = "STUDIONET";
 export const EXPLORER_URL = `https://genlayer-explorer.vercel.app/contracts/${CONTRACT_ADDRESS}`;
 export const REPO_URL = "https://github.com/hoveiser/prophet-syndicate";
-export const LINKED_PROPHET_GRID_ADDRESS = "0xB0aeDBb6E8056c0a2c90E4BD901bB0f3DA6Bb967";
+export const LINKED_PROPHET_GRID_ADDRESS = "0x31C53838fF49168128D772625e34d3D2F7e11116";
 export const LINKED_PROPHET_GRID_URL = "https://github.com/hoveiser/prophet-grid";
 export const RUNNER_PIN = "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6";
-export const RELEASE_TAG = "studionet-v1";
+export const RELEASE_TAG = "studionet-v2";
 
 export const GEN = 1_000_000_000_000_000_000n;
 export const FULL_SCALE_BPS = 10_000n;

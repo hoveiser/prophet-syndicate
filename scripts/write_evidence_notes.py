@@ -78,6 +78,28 @@ def main() -> int:
             row["derived_senior_yield_bps"], row["derived_junior_yield_bps"], gen(row["senior_floor_wei"]))
         )
     add("")
+    cc = data.get("cross_contract_proof", {})
+    proofs = cc.get("positions_by_epoch", {})
+    if proofs:
+        add("## Real cross contract deployment and reconciliation")
+        add("")
+        add("| Epoch | Live market | Routed GEN | Reconciled | Grid recorded this desk |")
+        add("|---|---|---|---|---|")
+        for eid in sorted(proofs, key=lambda x: int(x)):
+            p = proofs[eid]
+            view = p.get("reconciled_view") or p.get("syndicate_view") or {}
+            portfolio = p.get("grid_trader_portfolio") or {}
+            held = any(str(m.get("market_id")) == str(p.get("market_id")) for m in portfolio.get("positions", []))
+            add("| %s | %s | %s | %s | %s |" % (
+                eid, p.get("market_id"), gen(p.get("routed_wei", 0)),
+                "yes" if view.get("reconciled") else "no", "yes" if held else "no"))
+        add("")
+        add("active deployed to ProphetGrid %s GEN, reconciled proceeds total %s GEN, total custody assets %s GEN, chain balance equals native custody: %s" % (
+            gen(cc.get("active_deployed_to_prophet_grid_wei", 0)), gen(cc.get("reconciled_proceeds_total_wei", 0)),
+            gen(cc.get("total_custody_assets_wei", 0)), cc.get("chain_balance_equals_native_custody")))
+        add("")
+        add(cc.get("reading", ""))
+        add("")
     add("## Transactions")
     add("")
     add("| Function | Account | Status | Result | Leader execution | Agree / total | Hash |")

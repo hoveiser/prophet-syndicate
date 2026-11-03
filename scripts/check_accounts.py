@@ -35,7 +35,7 @@ def main():
     for index, name in enumerate(("alice", "bob", "carol"), start=1):
         burner = create_account(derive(master, index))
         print(name, burner.address, "balance", w3.eth.get_balance(burner.address) / 10 ** 18, "GEN")
-    linked = "0xB0aeDBb6E8056c0a2c90E4BD901bB0f3DA6Bb967"
+    linked = "0x31C53838fF49168128D772625e34d3D2F7e11116"
     try:
         print("linked prophet grid code size", len(w3.eth.get_code(linked)))
     except Exception as exc:

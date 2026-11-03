@@ -17,6 +17,25 @@ export interface EpochState {
   junior_commit_wei: string;
   senior_floor_wei: string;
   challenge_count: string;
+  prophet_grid_deployment_status?: string;
+  prophet_grid_reconciled?: boolean;
+}
+
+export interface MarketPosition {
+  epoch_id: string;
+  has_position: boolean;
+  deployment_status: string;
+  target_market_id?: string;
+  deployed_capital_wei?: string;
+  yes_shares_recorded?: string;
+  no_shares_recorded?: string;
+  prophet_grid_entry_snapshot?: string;
+  reconciled?: boolean;
+  reconciled_return_wei?: string;
+  realized_gain_wei?: string;
+  realized_loss_wei?: string;
+  active_deployed_to_prophet_grid: string;
+  reconciled_proceeds_total: string;
 }
 
 export interface Summary {
@@ -27,6 +46,9 @@ export interface Summary {
   partition: Record<string, string>;
   native_custody_balance: string;
   vault_custody_balance: string;
+  active_deployed_to_prophet_grid: string;
+  reconciled_proceeds_total: string;
+  total_custody_assets_wei: string;
   pst_total_supply: string;
   vm_account_balance_wei: string;
   reserved_liability_wei: string;

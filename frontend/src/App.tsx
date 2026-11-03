@@ -2,15 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CONTRACT_ADDRESS, GEN, NETWORK_LABEL } from "./config";
 import { burnerKey, connectInjected, deskFromKey, describeFailure, nativeBalanceOfVault, readJson, readOnlyDesk, send, type DeskHandle } from "./lib/chain";
 import { shortAddress, wei } from "./lib/model";
-import type { Position, Summary } from "./types";
+import type { MarketPosition, Position, Summary } from "./types";
 import { AuditConsole } from "./ui/AuditConsole";
 import { BridgeWaterfall } from "./ui/BridgeWaterfall";
+import { PositionLedger } from "./ui/PositionLedger";
 import { StressModeler } from "./ui/StressModeler";
 import { WalletBar } from "./ui/WalletBar";
 
 interface Feed {
   summary: Summary | null;
   position: Position | null;
+  positions: Record<string, MarketPosition>;
   chainVaultWei: bigint | null;
   deskWei: bigint | null;
 }
@@ -18,7 +20,7 @@ interface Feed {
 export default function App() {
   const [slot, setSlot] = useState(0);
   const [desk, setDesk] = useState<DeskHandle | null>(null);
-  const [feed, setFeed] = useState<Feed>({ summary: null, position: null, chainVaultWei: null, deskWei: null });
+  const [feed, setFeed] = useState<Feed>({ summary: null, position: null, positions: {}, chainVaultWei: null, deskWei: null });
   const [busy, setBusy] = useState<string>("");
   const [notice, setNotice] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
   const [clock, setClock] = useState(Math.floor(Date.now() / 1000));
@@ -44,8 +46,17 @@ export default function App() {
     ]);
     const account = desk?.address ?? probe.address;
     const position = await readJson<Position>(probe.client, "get_tranche_position", [account]);
+    const routed = (summary.epochs ?? []).filter((row) => BigInt(row.derived_active_deployment_amount || "0") > 0n);
+    const entries = await Promise.all(
+      routed.map(async (row) => {
+        const value = await readJson<MarketPosition>(probe.client, "get_epoch_prophet_grid_position", [Number(row.epoch_id)]);
+        return [row.epoch_id, value] as const;
+      }),
+    );
+    const positions: Record<string, MarketPosition> = {};
+    for (const [id, value] of entries) positions[id] = value;
     const deskWei = desk?.writable ? await probe.client.getBalance({ address: desk.address as `0x${string}` }) : null;
-    setFeed({ summary, position, chainVaultWei, deskWei: typeof deskWei === "bigint" ? deskWei : wei(deskWei ?? 0n) });
+    setFeed({ summary, position, positions, chainVaultWei, deskWei: typeof deskWei === "bigint" ? deskWei : wei(deskWei ?? 0n) });
     setClock(Math.floor(Date.now() / 1000));
   }, [desk]);
 
@@ -140,6 +151,16 @@ export default function App() {
         <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
           <BridgeWaterfall summary={summary} position={feed.position} chainVaultWei={feed.chainVaultWei} busy={busy} onAct={act} />
           <StressModeler summary={summary} intakeEpoch={intakeEpoch} />
+        </div>
+
+        <div className="mt-5">
+          <PositionLedger
+            summary={summary}
+            positions={feed.positions}
+            writable={Boolean(desk?.writable)}
+            busy={busy}
+            onAct={act}
+          />
         </div>
 
         <div className="mt-5">

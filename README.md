@@ -7,32 +7,42 @@ macro implied volatility print and the depth of the linked ProphetGrid market bo
 onto a discrete 250 bps grid, and must agree exactly on one of four routing bands and on every wei
 number that band produces. The band decides how much syndicate liquidity is routed into ProphetGrid
 market making, how much stays inside the senior protection shield, and the tranche yield rates for
-that epoch.
+that epoch. That routed capital is not only derived and stored: the syndicate moves it with a real
+value carrying cross contract call into the live ProphetGrid, the grid records the syndicate address
+as a position holder, and the position must be read back and reconciled before the epoch may settle.
 
 | | |
 |---|---|
-| Deployed intelligent contract (studionet, chain 61999) | `0x206bdF01A814e8ae27EbC4A7aC138995217B95F8` |
-| Deploy transaction | `0x2ee35b6d60629b83d346790128611d5830ab26e0e272a2e3ab79a95afd637b37` |
-| Deployed commit | `f8cff0a` (tag `studionet-v1`) |
-| Explorer | <https://genlayer-explorer.vercel.app/contracts/0x206bdF01A814e8ae27EbC4A7aC138995217B95F8> |
+| Deployed intelligent contract (studionet, chain 61999) | `0x0F9e290348e1500fA0800DDB89e5d770723038ef` |
+| Deploy transaction | `0xcfe195a7674c02f3120fa4a56774c889875b4ac6abfe57dcac0257b2af9fc913` |
+| Deployed commit | tag `studionet-v2` |
+| Explorer | <https://genlayer-explorer.vercel.app/contracts/0x0F9e290348e1500fA0800DDB89e5d770723038ef> |
 | Live desk | <https://hoveiser.github.io/ProphetSyndicate/> |
-| Linked ecosystem module | ProphetGrid `0xB0aeDBb6E8056c0a2c90E4BD901bB0f3DA6Bb967` |
-| Contract source | `contracts/prophet_syndicate.py`, 36,560 bytes, sha256 `f25eff7c7e17f7db280d330597f60016daeab3564094371e4039d65d70f3ed8d`, pinned runner `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6` |
-| Tests | 72 direct mode tests, `genvm-lint check` clean |
+| Linked live ProphetGrid (real cross contract target) | `0x31C53838fF49168128D772625e34d3D2F7e11116` |
+| Contract source | `contracts/prophet_syndicate.py`, 44,342 bytes, sha256 `49007b0c067ef84b9c82a9eec5a7bc672be2e7ed03c4896082f287561b66b70e`, pinned runner `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6` |
+| Tests | 84 direct mode tests, `genvm-lint check` clean |
 | Evidence | `evidence/studionet_deployment.json`, `docs/adversarial-review.md`, `docs/evidence.md` |
 
 ## What is actually on chain
 
-The vault is funded with native GEN. Custody is split into buckets that always partition the
-account balance exactly, and the contract proves it on chain:
+The vault is funded with native GEN. Custody is accounted as assets against liabilities and the
+contract proves the balance on chain. Assets are the native GEN still held by the account plus the
+capital currently deployed inside ProphetGrid plus the proceeds already reconciled back from it.
+Liabilities are the two tranche principals, the claimable bucket, the locked bonds and the yield
+pool. The partition is exact at every step:
 
 ```json
 "checks": {
   "custody_partition_exact": true,
   "pst_backed_by_custody": true,
-  "locked_principal_reserved": true
+  "locked_principal_reserved": true,
+  "deployed_within_custody": true
 }
 ```
+
+`native_custody_balance` is decremented the instant capital really leaves for ProphetGrid, so it
+always equals `eth_getBalance` of the contract account, while `active_deployed_to_prophet_grid` and
+`reconciled_proceeds_total` carry the off-account value as recognized assets.
 
 | Bucket | Meaning |
 |---|---|
@@ -71,6 +81,29 @@ consensus returns, the contract re-derives the whole allocation with integer ari
 prints and reverts unless every field matches, so validators decide *what the market looks like*
 and never get to invent a number that moves funds.
 
+## Real cross contract deployment and reconciliation
+
+The routed print is only meaningful if the capital actually moves and comes back reconciled, so
+three mechanisms sit on top of the routing consensus:
+
+* `deploy_routed_capital_to_prophet_grid(epoch_id, target_market_id, yes_leg_amount, no_leg_amount)`
+  takes a `FINALIZED` epoch and sends the two legs with `grid.emit(value=..., on="finalized")
+acquire_outcome_shares_payable(...)` to the linked ProphetGrid. It checks the legs sum to the routed
+  print exactly, that each leg is inside the grid staking floor and ceiling, that the vault really
+  holds the capital, then decrements `native_custody_balance`, raises
+  `active_deployed_to_prophet_grid`, and stores a `MarketPosition`.
+* `reconcile_prophet_grid_position(epoch_id)` reads the live grid book back through
+  `grid.view().preview_payout(market, self)`. A finalized market with a payout claims the winnings;
+  otherwise it falls back to the refundable principal. A gain is booked to the yield pool; a loss
+  shaves junior principal first then senior. It clears `active_deployed`, raises
+  `reconciled_proceeds_total` and marks the position `RECONCILED_LIVE`.
+* `settle_tranche_epoch` is gated: an epoch whose routed capital is greater than zero will not settle
+  until that capital has been deployed to and reconciled with ProphetGrid.
+
+`get_epoch_prophet_grid_position(epoch_id)` and the `active_deployed_to_prophet_grid` and
+`reconciled_proceeds_total` fields inside `get_custody_accounting_summary()` expose all of it for
+independent verification.
+
 ## Steward rules
 
 | Rule | Where it lives |
@@ -85,22 +118,33 @@ and never get to invent a number that moves funds.
 | 10 enforceable timing, zero winner refunds | `execute_consensus_rebalance` needs `subscription_close_epoch`, `settle_tranche_epoch` needs `rebalance_challenge_deadline_epoch`, `REFUNDABLE_ZERO_UTILIZATION` and `rebalance_timeout_epoch` feed `claim_epoch_principal_refund` |
 | 11 four way identity | `scripts/verify_identity.py`, result in `evidence/studionet_deployment.json` |
 
-## Live scenario, every transaction explorer checkable
+## Live scenario, every transaction chain checkable
 
-30 transactions, all `FINALIZED` with leader execution `SUCCESS` and result `MAJORITY_AGREE`:
+48 transactions, all `FINALIZED` with leader execution `SUCCESS` and result `MAJORITY_AGREE`. Every
+epoch that routed capital created its own live ProphetGrid market, deployed into it, and reconciled
+before settling:
 
-| Epoch | Route | Band | Volatility | Tail risk | Routed | Shield | Senior / junior yield | Outcome |
-|---|---|---|---|---|---|---|---|---|
-| 1 | 6 GEN senior, 3 GEN junior | `HIGH_CONVICTION_DEPLOYMENT` | 2000 bps | 1000 bps | 7.182 GEN | 1.7955 GEN | 500 / 2000 bps | settled, principal plus yield claimable |
-| 2 | 4 GEN senior, 2 GEN junior, then challenged and re audited | `HIGH_CONVICTION_DEPLOYMENT` | 2000 bps | 1000 bps | 4.788 GEN | 1.197 GEN | 500 / 2000 bps | settled after a paid re audit |
-| 3 | 2 GEN senior, 1 GEN junior, never audited | none | 0 | 0 | 0 | 0 | 0 | `PRINCIPAL_REFUND_CLAIMABLE`, both LPs recovered 100 percent of principal, the routing bond was forfeited into the yield pool |
-| 4 | 3 GEN junior, 2 GEN senior | `DEFENSIVE_COLLATERAL_BUFFER` | 2000 bps | 6000 bps | 0.9975 GEN | 3.99 GEN | 1500 / 250 bps | settled |
+| Epoch | Route | Band | Routed | Live market | ProphetGrid status | Outcome |
+|---|---|---|---|---|---|---|
+| 1 | 6 GEN senior, 3 GEN junior | `HIGH_CONVICTION_DEPLOYMENT` | 7.182 GEN | 6 | `RECONCILED_LIVE` | real dual leg deploy, reconciled, settled |
+| 2 | 4 GEN senior, 2 GEN junior, challenged then re audited | `HIGH_CONVICTION_DEPLOYMENT` | 4.788 GEN | 7 | `RECONCILED_LIVE` | deployed, reconciled, settled after a paid re audit |
+| 3 | 2 GEN senior, 1 GEN junior, never audited | none | 0 | none | `UNDEPLOYED` | Rule 10 timeout, both LPs recovered 100 percent of principal, bond forfeited to the pool |
+| 4 | 3 GEN junior, 2 GEN senior | `DEFENSIVE_COLLATERAL_BUFFER` | 0.9975 GEN | 8 | `RECONCILED_LIVE` | deployed, reconciled, settled |
+| 5 | 6 GEN senior, 4 GEN junior | `HIGH_CONVICTION_DEPLOYMENT` | 7.98 GEN | 9 | `RECONCILED_LIVE` | dedicated cross contract round trip, deployed, reconciled, settled |
 
-Soft fail proof: a proposal with only a quarter of the routing bond finalized as `SUCCESS` without
-opening an epoch, the 2.995 GEN stayed claimable by that address, and `withdraw_refund` then paid
-it out in a separate finalized transaction (`0x408748612b0986a1a4...`). At the end of the run the
-ledger custody and the chain balance of the vault both read 0.03 GEN, which is the residual
-claimable balance, so the claim rail really moved native value out of custody.
+Cross contract proof (all `FINALIZED` / `SUCCESS`): epoch 5 created live market 9
+(`0xb41eb9a137b831c03732405c081aba5630fb9e7732671ae3f654788db747b556`), deployed 3.99 / 3.99 GEN
+dual leg (`0xfcf7ddc667439bc60ce2dee18a9e4e77fa6305c11dc4b176c135a94746c10c02`), then reconciled
+against the grid's own book (`0x61fa7097e4e19feb97387a78a7b45711e93acb5c690ebeb598bfa40a6b2418f4`).
+At that moment the linked ProphetGrid `get_trader_portfolio` listed the syndicate contract
+`0x0F9e...38ef` as a real position holder across markets 6, 7, 8 and 9.
+
+Soft fail proof: a proposal carrying only a quarter of the routing bond finalized as `SUCCESS`
+without opening an epoch, the 2.995 GEN stayed claimable by that address, and `withdraw_refund` paid
+it out in a separate finalized transaction (`0x9ea95eab63d0c8569b50...`). At the end of the run the
+ledger `native_custody_balance` and `eth_getBalance` of the vault both read 1.12 GEN, so the claim
+rail really moved native value and the deployed capital is accounted as an off account asset rather
+than double counted.
 
 Reproduce with:
 
@@ -112,8 +156,8 @@ Reproduce with:
 ## Repository map
 
 ```
-contracts/prophet_syndicate.py       the intelligent contract (36,560 bytes)
-tests/test_prophet_syndicate_direct.py  72 direct mode tests
+contracts/prophet_syndicate.py       the intelligent contract (44,342 bytes)
+tests/test_prophet_syndicate_direct.py  84 direct mode tests
 tests/conftest.py                    fixtures, feed mocks and the fixed epoch clock
 scripts/deploy_studionet.py          studionet deployment and live scenario with evidence
 scripts/verify_identity.py           four way sha256 identity check
@@ -144,10 +188,11 @@ npm run dev                            # http://127.0.0.1:5183/prophet-syndicate
 npm run build
 ```
 
-The desk loads in four or fewer chain reads: `get_custody_accounting_summary`,
-`get_tranche_position`, `eth_getBalance` for the vault and, for LPs with a key, one estimate per
-action. Burner desks for three independent LPs are generated in page storage, and MetaMask or any
-injected wallet can sign the same calls.
+The desk loads in a handful of chain reads: `get_custody_accounting_summary`,
+`get_tranche_position`, one `get_epoch_prophet_grid_position` per routed epoch to render the live
+ProphetGrid position and reconciliation ledger, `eth_getBalance` for the vault and, for LPs with a
+key, one estimate per action. Burner desks for three independent LPs are generated in page storage,
+and MetaMask or any injected wallet can sign the same calls, including deploy and reconcile.
 
 ## What is on chain, what is not
 
@@ -170,3 +215,12 @@ injected wallet can sign the same calls.
   the evidence claims the vault account balance proof and the finalized payout transactions, not a
   per wallet delta.
 * Studionet finality for a consensus call took 40 to 60 seconds per transaction in this run.
+* The linked ProphetGrid redeems external positions into its own PGT collateral, not native GEN, so
+  reconciled proceeds are recognized as an in contract asset (`reconciled_proceeds_total`) and the
+  native custody balance is only restored when that collateral is later unwound. Deploy therefore
+  really lowers the account balance and reconcile really raises the asset side, never both at once.
+* The live round trips reconciled against markets still inside their open window, so proceeds were
+  booked at par (refundable principal); realized gain and loss paths are exercised by the mocked
+  cross contract tests, which drive a finalized payout and a below par payout deterministically.
+* The linked ProphetGrid address is a deployer set trust assumption; it is fixed in the constructor
+  and never writable afterwards, and the deploy, reconcile and probe all read the same one address.
